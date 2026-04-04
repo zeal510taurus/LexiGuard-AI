@@ -1,1 +1,14 @@
+# Secrets
 .env
+
+# Python 
+__pycache__/
+*.py[cod]
+
+# Databases (Local testing only)
+lexi_brain_db/
+users.db
+
+# Virtual Environments
+venv/
+.venv/
