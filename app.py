@@ -58,3 +58,41 @@ if user_input:
 for role, msg in st.session_state.chat:
     with st.chat_message(role):
         st.markdown(msg)
+
+if "paid" not in st.session_state:
+    st.session_state.paid = False
+
+if not st.session_state.paid:
+    st.warning("🔒 Upgrade to Pro")
+    st.markdown("[💳 Pay Here](https://buy.stripe.com/28E4gtfnX9Fm8DV2rAfUQ00)")
+
+    code = st.text_input("Enter payment code")
+
+    if code == "PRO123":  # temporary manual unlock
+        st.session_state.paid = True
+        st.success("Unlocked!")
+
+    st.stop()
+
+if "usage" not in st.session_state:
+    st.session_state.usage = 0
+
+st.session_state.usage += 1
+
+if st.session_state.usage > 20:
+    st.warning("Limit reached. Upgrade required.")
+    st.stop()
+
+c.execute("""CREATE TABLE IF NOT EXISTS chats (
+    user TEXT,
+    message TEXT
+)""")
+
+c.execute("INSERT INTO chats VALUES (?, ?)", (st.session_state.user, user_input))
+conn.commit()
+
+st.sidebar.success(f"👤 {st.session_state.user}")
+
+with st.spinner("Thinking..."):
+    response = ask_ai(prompt)
+
