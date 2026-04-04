@@ -1,90 +1,92 @@
 import streamlit as st
+import datetime
+import sqlite3
 from auth import login_system
 from ai_module import ask_ai
 from file_handler import read_pdf, read_txt
-import datetime
 
+# 1. Page Config & Setup
 st.set_page_config(page_title="Smart Assistant Pro", page_icon="🤖", layout="wide")
-st.title("💥 Smart Assistant Pro")
 
-# Login
+# Database Connection (Using a context manager is safer)
+conn = sqlite3.connect("users.db", check_same_thread=False)
+c = conn.cursor()
+c.execute("CREATE TABLE IF NOT EXISTS chats (user TEXT, role TEXT, message TEXT, timestamp DATETIME)")
+
+# 2. Authentication
 user = login_system()
 if not user:
+    st.info("Please login via the sidebar to continue.")
     st.stop()
 
-# Initialize chat state
+# 3. Initialize Session State
 if "chat" not in st.session_state:
     st.session_state.chat = []
 if "file_text" not in st.session_state:
     st.session_state.file_text = ""
+if "usage" not in st.session_state:
+    st.session_state.usage = 0
+if "paid" not in st.session_state:
+    st.session_state.paid = False
 
-# Sidebar actions
-if st.sidebar.button("🧹 Clear Chat"):
-    st.session_state.chat = []
-    st.session_state.file_text = ""
+# 4. Sidebar - User Info & Controls
+with st.sidebar:
+    st.divider()
+    st.subheader(f"👤 {user}")
+    
+    col1, col2 = st.columns(2)
+    if col1.button("🧹 Clear", use_container_width=True):
+        st.session_state.chat = []
+        st.session_state.file_text = ""
+        st.rerun()
 
-if st.sidebar.button("💾 Save Conversation"):
-    filename = f"chat_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-    with open(filename, "w", encoding="utf-8") as f:
-        for role, msg in st.session_state.chat:
-            f.write(f"{role.upper()}: {msg}\n\n")
-    st.sidebar.success(f"Saved as {filename}")
+    if col2.button("💾 Save", use_container_width=True):
+        history = "\n".join([f"{r.upper()}: {m}" for r, m in st.session_state.chat])
+        st.download_button("Download TXT", history, file_name=f"chat_{user}_{datetime.datetime.now().strftime('%H%M')}.txt")
 
-# File upload
-uploaded_file = st.file_uploader("📎 Upload Document", type=["pdf", "txt"])
-if uploaded_file:
-    if uploaded_file.type == "application/pdf":
-        st.session_state.file_text = read_pdf(uploaded_file)
+    # Paywall Logic
+    if not st.session_state.paid:
+        st.warning("🔒 Free Tier")
+        st.progress(st.session_state.usage / 20, text=f"Usage: {st.session_state.usage}/20")
+        
+        with st.expander("Upgrade to Pro"):
+            st.markdown("[💳 Click here to Pay](https://buy.stripe.com/example)")
+            code = st.text_input("Enter License Code", type="password")
+            if code == "PRO123":
+                st.session_state.paid = True
+                st.success("Unlocked! Rerunning...")
+                st.rerun()
     else:
-        st.session_state.file_text = read_txt(uploaded_file)
+        st.success("🌟 Pro Account Active")
 
-# Chat input
-user_input = st.chat_input("💬 Ask something...")
-if user_input:
-    st.session_state.chat.append(("user", user_input))
-    prompt = f"{st.session_state.file_text}\n\nQuestion: {user_input}" if st.session_state.file_text else user_input
-    response = ask_ai(prompt)
-    st.session_state.chat.append(("assistant", response))
+# 5. File Upload Logic
+uploaded_file = st.file_uploader("📎 Upload Document for Context", type=["pdf", "txt"])
+if uploaded_file and not st.session_state.file_text: # Process only once
+    with st.spinner("Reading file..."):
+        if uploaded_file.type == "application/pdf":
+            st.session_state.file_text = read_pdf(uploaded_file)
+        else:
+            st.session_state.file_text = read_txt(uploaded_file)
+    st.toast("File uploaded successfully!")
 
-# Display chat
+# 6. Chat Display
 for role, msg in st.session_state.chat:
     with st.chat_message(role):
         st.markdown(msg)
 
-if "paid" not in st.session_state:
-    st.session_state.paid = False
+# 7. Chat Input & Processing
+if prompt := st.chat_input("💬 Ask something..."):
+    # Check Limits
+    if not st.session_state.paid and st.session_state.usage >= 20:
+        st.error("❌ Limit reached. Please upgrade to Pro to continue.")
+    else:
+        # Add User Message
+        st.session_state.chat.append(("user", prompt))
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-if not st.session_state.paid:
-    st.warning("🔒 Upgrade to Pro")
-    st.markdown("[💳 Pay Here](https://buy.stripe.com/28E4gtfnX9Fm8DV2rAfUQ00)")
-
-    code = st.text_input("Enter payment code")
-
-    if code == "PRO123":  # temporary manual unlock
-        st.session_state.paid = True
-        st.success("Unlocked!")
-
-    st.stop()
-
-if "usage" not in st.session_state:
-    st.session_state.usage = 0
-
-st.session_state.usage += 1
-
-if st.session_state.usage > 20:
-    st.warning("Limit reached. Upgrade required.")
-    st.stop()
-
-c.execute("""CREATE TABLE IF NOT EXISTS chats (
-    user TEXT,
-    message TEXT
-)""")
-
-c.execute("INSERT INTO chats VALUES (?, ?)", (st.session_state.user, user_input))
-conn.commit()
-
-st.sidebar.success(f"👤 {st.session_state.user}")
-
-with st.spinner("Thinking..."):
-    response = ask_ai(prompt)
-
+        # Generate Response
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                full_prompt = f"Context: {st.session_state.file_text}\n\nUser: {prompt}" if st.session_state.file_text else prompt
+                response = ask_ai(
