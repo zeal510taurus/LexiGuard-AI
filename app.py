@@ -2,7 +2,6 @@ import streamlit as st
 from auth import login_system
 from ai_module import ask_ai
 from file_handler import read_pdf, read_txt
-from voice import get_voice_input
 import datetime
 
 st.set_page_config(page_title="Smart Assistant Pro", page_icon="🤖", layout="wide")
@@ -30,13 +29,6 @@ if st.sidebar.button("💾 Save Conversation"):
         for role, msg in st.session_state.chat:
             f.write(f"{role.upper()}: {msg}\n\n")
     st.sidebar.success(f"Saved as {filename}")
-
-if st.button("🎤 Record Voice"):
-    voice_text = get_voice_input(duration=5)
-    if voice_text:
-        st.session_state.chat.append(("user", voice_text))
-        response = ask_ai(voice_text)
-        st.session_state.chat.append(("assistant", response))
 
 # File upload
 uploaded_file = st.file_uploader("📎 Upload Document", type=["pdf", "txt"])
