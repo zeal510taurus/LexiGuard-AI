@@ -4,6 +4,5 @@ python-dotenv
 PyMuPDF
 chromadb
 fpdf
-pandas
 gTTS
 streamlit-mic-recorder
