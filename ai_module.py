@@ -23,7 +23,7 @@ generation_config = {
 }
 
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash", # Or "gemini-2.0-flash" if available in your tier
+    model_name="gemini-2.5-flash", # Or "gemini-2.0-flash" if available in your tier
     generation_config=generation_config,
 )
 
